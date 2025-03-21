@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { theme, commonStyles } from '../../constants/theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function AddCoinScreen() {
   const router = useRouter();
@@ -15,17 +16,28 @@ export default function AddCoinScreen() {
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = async () => {
+  const validateForm = () => {
     if (!name || !symbol || !quantity || !price) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+      setErrorMessage('Please fill in all fields');
+      setShowErrorAlert(true);
+      return false;
     }
 
     if (isNaN(quantity) || isNaN(price)) {
-      Alert.alert('Error', 'Quantity and price must be valid numbers');
-      return;
+      setErrorMessage('Quantity and price must be valid numbers');
+      setShowErrorAlert(true);
+      return false;
     }
+
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm() || isLoading) return;
 
     setIsLoading(true);
 
@@ -50,21 +62,12 @@ export default function AddCoinScreen() {
       setSymbol('');
       setQuantity('');
       setPrice('');
+      setShowSuccessAlert(true);
 
-      Alert.alert(
-        'Success! 🎉', 
-        'Add coin Successfully!',
-        [{ 
-          text: 'OK',
-          onPress: () => {
-            router.push('/tabs');
-          }
-        }],
-        { cancelable: false }
-      );
     } catch (error) {
       console.error('Error adding coin:', error);
-      Alert.alert('Error', 'Failed to add coin. Please try again.');
+      setErrorMessage('Failed to add coin. Please try again.');
+      setShowErrorAlert(true);
     } finally {
       setIsLoading(false);
     }
@@ -155,6 +158,44 @@ export default function AddCoinScreen() {
           </TouchableOpacity>
         </LinearGradient>
       </View>
+
+      {showSuccessAlert && (
+        <CustomAlert
+          visible={showSuccessAlert}
+          title="Success! 🎉"
+          message="Coin added successfully!"
+          buttons={[
+            {
+              text: 'OK',
+              style: 'default',
+              onPress: () => {
+                setShowSuccessAlert(false);
+                router.push('/tabs');
+              }
+            }
+          ]}
+          onDismiss={() => {
+            setShowSuccessAlert(false);
+            router.push('/tabs');
+          }}
+        />
+      )}
+
+      {showErrorAlert && (
+        <CustomAlert
+          visible={showErrorAlert}
+          title="Error"
+          message={errorMessage}
+          buttons={[
+            {
+              text: 'OK',
+              style: 'default',
+              onPress: () => setShowErrorAlert(false)
+            }
+          ]}
+          onDismiss={() => setShowErrorAlert(false)}
+        />
+      )}
     </LinearGradient>
   );
 }

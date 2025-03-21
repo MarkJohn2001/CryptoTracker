@@ -1,17 +1,29 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { theme, commonStyles } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import CustomAlert from '../../components/CustomAlert';
 
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
   const { portfolio, deleteCoin, editCoin } = usePortfolio();
   const [deletingCoinId, setDeletingCoinId] = useState(null);
   const [editingCoinId, setEditingCoinId] = useState(null);
-  const [editForm, setEditForm] = useState({ quantity: '', price: '' });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    symbol: '',
+    quantity: '',
+    price: ''
+  });
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [showEditAlert, setShowEditAlert] = useState(false);
+  const [selectedCoin, setSelectedCoin] = useState(null);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
 
   const calculateTotalValue = () => {
     return portfolio.reduce((total, coin) => {
@@ -35,69 +47,87 @@ export default function HomeScreen() {
 
   const handleDelete = async (coin) => {
     if (!coin || !coin.id || deletingCoinId) return;
+    setSelectedCoin(coin);
+    setShowDeleteAlert(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedCoin) return;
     
     try {
-      setDeletingCoinId(coin.id);
-      await deleteCoin(coin.id);
+      setDeletingCoinId(selectedCoin.id);
+      await deleteCoin(selectedCoin.id);
       console.log('Delete operation successful');
-      Alert.alert('Success! 🎉', 'Delete Successfully!');
+      setShowDeleteAlert(false);
+      setAlertMessage('Delete Successfully!');
+      setShowSuccessAlert(true);
     } catch (error) {
       console.error('Error deleting coin:', error);
-      Alert.alert('Error', 'Failed to delete coin. Please try again.');
+      setAlertMessage('Failed to delete coin. Please try again.');
+      setShowErrorAlert(true);
     } finally {
+      setSelectedCoin(null);
       setTimeout(() => setDeletingCoinId(null), 100);
     }
   };
 
   const handleEdit = (coin) => {
-    setEditingCoinId(coin.id);
+    setSelectedCoin(coin);
     setEditForm({
+      name: coin.name,
+      symbol: coin.symbol,
       quantity: coin.quantity.toString(),
       price: coin.price.toString()
     });
+    setShowEditAlert(true);
+  };
 
-    Alert.alert(
-      'Edit Coin',
-      'Update coin details:',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => {
-            setEditingCoinId(null);
-            setEditForm({ quantity: '', price: '' });
-          }
-        },
-        {
-          text: 'Save',
-          style: 'default',
-          onPress: async () => {
-            try {
-              const updatedData = {
-                quantity: parseFloat(editForm.quantity),
-                price: parseFloat(editForm.price)
-              };
+  const confirmEdit = async () => {
+    if (!selectedCoin) return;
+    
+    try {
+      const quantity = parseFloat(editForm.quantity);
+      const price = parseFloat(editForm.price);
+      const name = editForm.name.trim();
+      const symbol = editForm.symbol.trim();
 
-              if (isNaN(updatedData.quantity) || isNaN(updatedData.price)) {
-                throw new Error('Invalid input values');
-              }
-
-              await editCoin(coin.id, updatedData);
-              Alert.alert('Success! 🎉', 'Edit Successfully!');
-            } catch (error) {
-              console.error('Error editing coin:', error);
-              Alert.alert('Error', 'Failed to edit coin. Please try again.');
-            } finally {
-              setEditingCoinId(null);
-              setEditForm({ quantity: '', price: '' });
-            }
-          }
-        }
-      ],
-      {
-        cancelable: false
+      if (!name) {
+        throw new Error('Coin name is required');
       }
-    );
+
+      if (!symbol) {
+        throw new Error('Coin symbol is required');
+      }
+
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error('Quantity must be a positive number');
+      }
+
+      if (isNaN(price) || price <= 0) {
+        throw new Error('Price must be a positive number');
+      }
+
+      const updatedData = {
+        ...selectedCoin,
+        name,
+        symbol,
+        quantity,
+        price,
+        lastUpdated: new Date().toISOString()
+      };
+
+      await editCoin(selectedCoin.id, updatedData);
+      setShowEditAlert(false);
+      setAlertMessage('Coin updated successfully!');
+      setShowSuccessAlert(true);
+    } catch (error) {
+      console.error('Error editing coin:', error);
+      setAlertMessage(error.message || 'Failed to edit coin. Please try again.');
+      setShowErrorAlert(true);
+    } finally {
+      setSelectedCoin(null);
+      setEditForm({ name: '', symbol: '', quantity: '', price: '' });
+    }
   };
 
   return (
@@ -222,6 +252,141 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
+      {showDeleteAlert && (
+        <CustomAlert
+          visible={showDeleteAlert}
+          title="Delete Coin"
+          message={`Are you sure you want to delete ${selectedCoin?.name}?`}
+          buttons={[
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                setShowDeleteAlert(false);
+                setSelectedCoin(null);
+              }
+            },
+            {
+              text: 'Delete',
+              style: 'default',
+              onPress: confirmDelete
+            }
+          ]}
+          onDismiss={() => {
+            setShowDeleteAlert(false);
+            setSelectedCoin(null);
+          }}
+        />
+      )}
+
+      {showEditAlert && (
+        <CustomAlert
+          visible={showEditAlert}
+          title="Edit Coin"
+          message="Update coin details:"
+          customContent={
+            <View style={styles.editForm}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.name}
+                  onChangeText={(text) => setEditForm(prev => ({ ...prev, name: text }))}
+                  placeholder="Enter coin name"
+                  placeholderTextColor={theme.dark.textSecondary}
+                />
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Symbol</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.symbol}
+                  onChangeText={(text) => setEditForm(prev => ({ ...prev, symbol: text }))}
+                  placeholder="Enter coin symbol"
+                  placeholderTextColor={theme.dark.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Quantity</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.quantity}
+                  onChangeText={(text) => setEditForm(prev => ({ ...prev, quantity: text }))}
+                  keyboardType="numeric"
+                  placeholder="Enter quantity"
+                  placeholderTextColor={theme.dark.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Price ($)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.price}
+                  onChangeText={(text) => setEditForm(prev => ({ ...prev, price: text }))}
+                  keyboardType="numeric"
+                  placeholder="Enter price"
+                  placeholderTextColor={theme.dark.textSecondary}
+                />
+              </View>
+            </View>
+          }
+          buttons={[
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                setShowEditAlert(false);
+                setSelectedCoin(null);
+                setEditForm({ name: '', symbol: '', quantity: '', price: '' });
+              }
+            },
+            {
+              text: 'Save',
+              style: 'default',
+              onPress: confirmEdit
+            }
+          ]}
+          onDismiss={() => {
+            setShowEditAlert(false);
+            setSelectedCoin(null);
+            setEditForm({ name: '', symbol: '', quantity: '', price: '' });
+          }}
+        />
+      )}
+      {showSuccessAlert && (
+        <CustomAlert
+          visible={showSuccessAlert}
+          title="Success! "
+          message={alertMessage}
+          buttons={[
+            {
+              text: 'OK',
+              style: 'default',
+              onPress: () => setShowSuccessAlert(false)
+            }
+          ]}
+          onDismiss={() => setShowSuccessAlert(false)}
+        />
+      )}
+
+      {showErrorAlert && (
+        <CustomAlert
+          visible={showErrorAlert}
+          title="Error"
+          message={alertMessage}
+          buttons={[
+            {
+              text: 'OK',
+              style: 'default',
+              onPress: () => setShowErrorAlert(false)
+            }
+          ]}
+          onDismiss={() => setShowErrorAlert(false)}
+        />
+      )}
     </LinearGradient>
   );
 }
@@ -320,5 +485,26 @@ const styles = StyleSheet.create({
   detailValue: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  editForm: {
+    width: '100%',
+    marginBottom: 10,
+  },
+  inputContainer: {
+    marginBottom: 15,
+  },
+  inputLabel: {
+    color: theme.dark.textSecondary,
+    marginBottom: 5,
+    fontSize: 14,
+  },
+  input: {
+    backgroundColor: theme.dark.surface,
+    borderWidth: 1,
+    borderColor: theme.dark.border,
+    borderRadius: 8,
+    padding: 10,
+    color: theme.dark.text,
+    fontSize: 16,
   },
 });
